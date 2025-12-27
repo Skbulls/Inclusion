@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 import pandas as pd
 
-inputfolder = 'C:/Users/kiran/Downloads/Input'
-outputfolder = 'C:/Users/kiran/Downloads/Output'
+inputfolder = 'C:/Users/skbulusu/Downloads/Input'
+outputfolder = 'C:/Users/skbulusu/Downloads/Output'
 
 
 umpx = 0.5  
@@ -157,4 +157,5 @@ summarydf.to_csv(os.path.join(outputfolder, "summary.csv"), index=False)
 
 
 print(summarydf)
+
 
