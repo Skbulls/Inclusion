@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 import pandas as pd
 
-inputfolder = 'C:/Users/skbulusu/Downloads/Input'
-outputfolder = 'C:/Users/skbulusu/Downloads/Output'
+inputfolder = '/Users/skbulls/Downloads/Input'
+outputfolder = '/Users/skbulls/Downloads/Output'
 
 
 umpx = 0.5  
