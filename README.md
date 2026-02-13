@@ -13,10 +13,10 @@ I'm also cropping out the bottom parts of the image that contain the scale bar a
 
 By using an Otsu threshold, we're able to find the best threshold for the images to separate bright & dark pixels, and this is important as images vary in brightness. We are now multiplying the threshold scale against the Otsu threshold because we classify fewer pixels as inclusions and we remove the possibility of smaller regions passing segmentation. 
 
-Morphological Cleanup was also something that I used to clean up the image by reducing noise and making sure that inclusions were well defined and easily identifiable from the other "noise".
+Morphological Cleanup was used to clean up the image by reducing noise and making sure that inclusions were well defined and easily identifiable from the other "noise".
 
 From here, we used a connected components algorithm so we can group pixels together as an object to measure it as an inclusion. Inclusions are highlighted with white circles on the image. 
 
-To quantify the total inclusion area, I add the areas of all detected conclusions, and the total percent area is just the (total inclusion area / total image area) * 100. 
+To quantify the total inclusion area, I add the areas of all detected inclusions, and the total percent area is just the (total inclusion area / total image area) * 100. 
 
 In the output folder, the program will save the overlay images and a summary CSV file along with a features csv file which contains the details for every inclusion in every image. 
