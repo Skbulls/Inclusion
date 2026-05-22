@@ -1,161 +1,139 @@
-
-#Refer to ReadME file for proper documentation on how this works..
-
 import os
 import cv2
 import numpy as np
 import pandas as pd
 
-inputfolder = '/Users/skbulls/Downloads/Input'
-outputfolder = '/Users/skbulls/Downloads/Output'
+
+channel = 'green' 
+inputfolder = '/Users/skbulls/Downloads/Input/Green'
+outputfolder = '/Users/skbulls/Downloads/Output/Green'
+
+pixelsize = 1.2
+minum2 = 20
+maxum2 = 500
+minarea = minum2 / (pixelsize ** 2)
+maxarea = maxum2 / (pixelsize ** 2)
 
 
-umpx = 0.5  
+thresholdscale = 1.0 
+minintensity = 40
+kernelsize = 3
+
+bgmin = 21
+bgmax = 101
+
+summarylist = []
+objectslist = []
 
 
-minum2 = 30.0      
-maxum2 = 500.0
+valid_img_area = (1360 * 1024) - ((124 * 420) + (60 * 240))
 
-minarea = minum2 / (umpx ** 2)
-maxarea = maxum2 / (umpx ** 2)
-      
-
-mkrnlsize = 3
-
-summary = []
-
- 
-
-for filename in os.listdir(inputfolder):
-    if not filename.lower().endswith(('.jpg', '.jpeg', '.png')): #Images only work if it's under the jpg / jpeg / png format.., if it is another format, you have to add the extension under the parameters
+for file in os.listdir(inputfolder):
+    if not file.lower().endswith(('.jpg', '.png', '.tif', '.jpeg')):
         continue
 
-    img_path = os.path.join(inputfolder, filename)
-    img = cv2.imread(img_path, cv2.IMREAD_COLOR) 
-
+    path = os.path.join(inputfolder, file)
+    img = cv2.imread(path)
     if img is None:
         continue
 
-    
-    if len(img.shape) == 3:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    else:
-        gray = img.copy()
-
-
-    gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
-    gray = gray.astype(np.uint8)
-
-    
-
-    
-    background = cv2.GaussianBlur(gray, (51, 51), 0) #
+    h, w = img.shape[:2]
+    imgroi = img.copy()
 
    
+    imgroi[h-124:h, 0:420] = 0 
+    imgroi[h-60:h, w-240:w] = 0
+
+    if len(imgroi.shape) == 3:
+        if channel == 'red':
+            gray = imgroi[:, :, 2]
+        elif channel == 'green':
+            gray = imgroi[:, :, 1]
+        elif channel == 'blue':
+            gray = imgroi[:, :, 0]
+        else:
+            gray = cv2.cvtColor(imgroi, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = imgroi.copy()
+
+    gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+    hroi, wroi = gray.shape
+    k = max(bgmin, min(bgmax, int(min(hroi, wroi)/20)))
+    if k % 2 == 0:
+        k = k + 1
+
+    background = cv2.GaussianBlur(gray, (k, k), 0)
     diff = cv2.subtract(gray, background)
+    diff = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
- 
-    diff = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX)
-    diff = diff.astype(np.uint8)
+    otsu, _ = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    tval = int(otsu * thresholdscale)
+    if tval < 0:
+        tval = 0
+    if tval > 255:
+        tval = 255
 
+    _, mask = cv2.threshold(diff, tval, 255, cv2.THRESH_BINARY)
 
-    _, mask = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-    
-    kernel = np.ones((mkrnlsize, mkrnlsize), np.uint8)
+    kernel = np.ones((kernelsize, kernelsize), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-    
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    numlabels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
 
-    image_area_px = gray.shape[0] * gray.shape[1]
-    total_area_px = 0
-    total_intensity = 0
-    total_pixels = 0
-    num_inclusions = 0
+    totalarea = 0
+    totalintensity = 0
+    totalpixels = 0
+    numinclusions = 0
 
- 
-    for label in range(1, num_labels):  
-        area = stats[label, cv2.CC_STAT_AREA]
-
-       
+    for i in range(1, numlabels):
+        area = stats[i, cv2.CC_STAT_AREA]
         if area < minarea or area > maxarea:
             continue
 
-        compmask = (labels == label)
-        intensities = gray[compmask]
-        mean_int = float(np.mean(intensities))
-        
-        total_area_px += area
-        total_intensity += np.sum(intensities)
-        total_pixels += area
-        num_inclusions += 1
+        maskcomp = (labels == i)
+        intensities = gray[maskcomp]
+        meanint = np.mean(intensities)
+        if meanint < minintensity:
+            continue
 
+        cx, cy = centroids[i]
+        totalarea = totalarea + area
+        totalintensity = totalintensity + np.sum(intensities)
+        totalpixels = totalpixels + area
+        numinclusions = numinclusions + 1
 
-    if image_area_px > 0:
-        percent_area = (total_area_px / image_area_px) * 100
+        objectslist.append({
+            "image": file,
+            "area_px": int(area),
+            "mean_intensity": float(meanint),
+            "centroid_x_px": float(cx),
+            "centroid_y_px": float(cy)
+        })
+
     
-    
+    if valid_img_area > 0:
+        percentarea = (totalarea / valid_img_area) * 100
     else:
-        percent_area = 0
+        percentarea = 0
         
-
-    if total_pixels > 0:
-        mean_intensity = (total_intensity / total_pixels) 
-        
+    if totalpixels > 0:
+        meanintensity = totalintensity / totalpixels
     else:
-        mean_intensity = 0
+        meanintensity = 0
 
-    if percent_area > 1.0:
-        prediction = "Inclusion" 
-    
-    else:
-        prediction = "No Inclusion"
-
-    summary.append({
-        "image": filename,
-        "num_inclusions": num_inclusions,
-        "total_area_px": int(total_area_px),
-        "total_area_um2": total_area_px * (umpx ** 2),
-        "percent_area": percent_area,
-        "mean_intensity": mean_intensity,
-        "prediction": prediction
+    summarylist.append({
+        "image": file,
+        "num_inclusions": numinclusions,
+        "total_area_px": int(totalarea),
+        "total_area_um2": totalarea * (pixelsize ** 2),
+        "percent_area": percentarea,
+        "mean_intensity": meanintensity
     })
 
+os.makedirs(outputfolder, exist_ok=True)
+pd.DataFrame(summarylist).to_csv(os.path.join(outputfolder, "summary.csv"), index=False)
+pd.DataFrame(objectslist).to_csv(os.path.join(outputfolder, "per_inclusion_features.csv"), index=False)
 
-
-    
-    overlay = img.copy()
-    
-   
-    for x in range(1, num_labels):
-        area = stats[x, cv2.CC_STAT_AREA]
-        
-        if area < minarea or area > maxarea:
-            continue
-        
-        compmask = (labels == x)
-        intensities = gray[compmask]
-        mean_int = float(np.mean(intensities))
-        
-        
-    
-        cx, cy = centroids[x]
-        radius = int(np.sqrt(area / np.pi)) 
-        
-        
-        cv2.circle(overlay, (int(cx), int(cy)), radius, (0, 0, 255), 2)
-
-    outputpath = os.path.join(outputfolder, os.path.splitext(filename)[0] + "(overlay).png")
-    cv2.imwrite(outputpath, overlay)
-
-
-summarydf = pd.DataFrame(summary)
-summarydf.to_csv(os.path.join(outputfolder, "summary.csv"), index=False)
-
-
-print(summarydf)
-
-
+print(pd.DataFrame(summarylist))
